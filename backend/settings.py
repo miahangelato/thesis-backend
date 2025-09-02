@@ -290,6 +290,18 @@ import os
 LOGS_DIR = BASE_DIR / 'logs'
 LOGS_DIR.mkdir(exist_ok=True)
 
+# Determine log levels based on environment
+if os.environ.get('RAILWAY_DEPLOYMENT') == 'True':
+    # Production logging - reduce verbosity to avoid Railway rate limits
+    DJANGO_LOG_LEVEL = os.environ.get('DJANGO_LOG_LEVEL', 'WARNING')
+    CORE_LOG_LEVEL = os.environ.get('CORE_LOG_LEVEL', 'WARNING')
+    ROOT_LOG_LEVEL = os.environ.get('ROOT_LOG_LEVEL', 'WARNING')
+else:
+    # Development logging - more verbose
+    DJANGO_LOG_LEVEL = os.environ.get('DJANGO_LOG_LEVEL', 'INFO')
+    CORE_LOG_LEVEL = os.environ.get('CORE_LOG_LEVEL', 'DEBUG')
+    ROOT_LOG_LEVEL = os.environ.get('ROOT_LOG_LEVEL', 'INFO')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -303,26 +315,37 @@ LOGGING = {
             'style': '{',
         },
     },
+    'filters': {
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
+    },
     'handlers': {
         'console': {
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
+            'filters': [] if os.environ.get('RAILWAY_DEPLOYMENT') == 'True' else ['require_debug_true'],
+        },
+        'throttled_console': {
+            'level': 'WARNING',  # Only WARNING and above in production
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
         },
     },
     'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
+        'handlers': ['throttled_console' if os.environ.get('RAILWAY_DEPLOYMENT') == 'True' else 'console'],
+        'level': ROOT_LOG_LEVEL,
     },
     'loggers': {
         'django': {
-            'handlers': ['console'],
-            'level': 'INFO',
+            'handlers': ['throttled_console' if os.environ.get('RAILWAY_DEPLOYMENT') == 'True' else 'console'],
+            'level': DJANGO_LOG_LEVEL,
             'propagate': False,
         },
         'core': {
-            'handlers': ['console'],
-            'level': 'INFO',
+            'handlers': ['throttled_console' if os.environ.get('RAILWAY_DEPLOYMENT') == 'True' else 'console'],
+            'level': CORE_LOG_LEVEL,
             'propagate': False,
         },
     },
@@ -330,11 +353,14 @@ LOGGING = {
 
 # Add file logging only in production (when not DEBUG)
 if not DEBUG:
+    # Use RotatingFileHandler to prevent large log files
     LOGGING['handlers']['file'] = {
-        'level': 'INFO',
-        'class': 'logging.FileHandler',
+        'level': 'WARNING',  # Only log warnings and above to file
+        'class': 'logging.handlers.RotatingFileHandler',
         'filename': LOGS_DIR / 'security.log',
         'formatter': 'verbose',
+        'maxBytes': 5 * 1024 * 1024,  # 5 MB per file
+        'backupCount': 3,  # Keep 3 backup files
     }
     # Add file handler to existing loggers
     for logger_name in ['django', 'core']:

@@ -4,12 +4,10 @@ import pandas as pd
 import numpy as np
 import pickle
 import os
-import logging
 from django.conf import settings
 from .models import Participant, Fingerprint
 from .risk_thresholds import get_risk_category, get_risk_description
-
-logger = logging.getLogger(__name__)
+from .log_utils import debug, info, warning, error
 
 # Check if we're in production environment
 IS_PRODUCTION = os.environ.get('RAILWAY_DEPLOYMENT') == 'True'
@@ -51,7 +49,7 @@ class DiabetesPredictor:
                     # Load model from S3
                     if key not in self.models or self.models[key] is None:
                         try:
-                            logger.info(f"Loading diabetes model {key} from S3")
+                            info(f"Loading diabetes model {key} from S3")
                             model_bytes = load_model_from_s3(S3_MODEL_KEYS[key], use_cache=True)
                             if isinstance(model_bytes, bytes):
                                 # If S3 loader returns bytes, deserialize them
@@ -59,30 +57,30 @@ class DiabetesPredictor:
                             else:
                                 # If S3 loader returns the deserialized object
                                 self.models[key] = model_bytes
-                            logger.info(f"Diabetes model {key} loaded from S3")
+                            info(f"Diabetes model {key} loaded from S3")
                         except Exception as e:
-                            logger.error(f"Failed to load diabetes model {key} from S3: {e}")
+                            error(f"Failed to load diabetes model {key} from S3: {e}")
                             self.models[key] = None
                     
                     # Load columns from S3
                     if key not in self.model_columns or self.model_columns[key] is None:
                         try:
-                            logger.info(f"Loading diabetes model columns {key} from S3")
+                            info(f"Loading diabetes model columns {key} from S3")
                             cols_bytes = load_model_from_s3(S3_COLS_KEYS[key], use_cache=True)
                             if isinstance(cols_bytes, bytes):
                                 self.model_columns[key] = pickle.loads(cols_bytes)
                             else:
                                 self.model_columns[key] = cols_bytes
-                            logger.info(f"Diabetes model columns {key} loaded from S3")
+                            info(f"Diabetes model columns {key} loaded from S3")
                         except Exception as e:
-                            logger.error(f"Failed to load diabetes model columns {key} from S3: {e}")
+                            error(f"Failed to load diabetes model columns {key} from S3: {e}")
                             self.model_columns[key] = None
                 
                 # If at least one model was loaded, return
                 if any(self.models.values()):
                     return
             except Exception as e:
-                logger.error(f"Error in S3 model loading: {e}")
+                error(f"Error in S3 model loading: {e}")
         
         # Fall back to local files if needed
         for key in self.model_paths:
@@ -94,12 +92,12 @@ class DiabetesPredictor:
                     if os.path.exists(model_path):
                         with open(model_path, 'rb') as f:
                             self.models[key] = pickle.load(f)
-                            logger.info(f"Diabetes model {key} loaded from local file")
+                            info(f"Diabetes model {key} loaded from local file")
                     else:
-                        logger.warning(f"Diabetes model file not found: {model_path}")
+                        warning(f"Diabetes model file not found: {model_path}")
                         self.models[key] = None
                 except Exception as e:
-                    logger.error(f"Error loading diabetes model {key}: {e}")
+                    error(f"Error loading diabetes model {key}: {e}")
                     self.models[key] = None
             
             # Only load columns if not already loaded
@@ -110,12 +108,12 @@ class DiabetesPredictor:
                     if os.path.exists(cols_path):
                         with open(cols_path, 'rb') as f:
                             self.model_columns[key] = pickle.load(f)
-                            logger.info(f"Diabetes model columns {key} loaded from local file")
+                            info(f"Diabetes model columns {key} loaded from local file")
                     else:
-                        logger.warning(f"Diabetes model columns file not found: {cols_path}")
+                        warning(f"Diabetes model columns file not found: {cols_path}")
                         self.model_columns[key] = None
                 except Exception as e:
-                    logger.error(f"Error loading diabetes model columns {key}: {e}")
+                    error(f"Error loading diabetes model columns {key}: {e}")
                     self.model_columns[key] = None
 
     def prepare_input_df(self, participant_data, model_key):
@@ -232,7 +230,7 @@ class DiabetesPredictor:
                 'probability': round(positive_prob, 4)
             }
         except Exception as e:
-            logger.error(f"Diabetes prediction failed: {str(e)}")
+            error(f"Diabetes prediction failed: {str(e)}")
             return {
                 'risk': 'unknown',
                 'risk_level': 'UNKNOWN',
