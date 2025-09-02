@@ -5,7 +5,7 @@ import logging
 import traceback
 import platform
 
-# Set up detailed logging
+# Se# MockDPFPDD is already defined aboveailed logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] [%(name)s] %(message)s',
@@ -19,6 +19,29 @@ logger = logging.getLogger(__name__)
 # Check platform - only Windows can use the fingerprint scanner directly
 IS_WINDOWS = platform.system() == 'Windows'
 logger.info(f"Platform: {platform.system()} - IS_WINDOWS: {IS_WINDOWS}")
+
+# Define these constants early so they're always available for import
+DPFPDD_SUCCESS = 0
+DPFPDD_IMG_FMT_PIXEL_BUFFER = 0
+DPFPDD_IMG_PROC_DEFAULT = 0
+DPFPDD_TIMEOUT_INFINITE = 0xFFFFFFFF
+
+_DP_FACILITY = 0x05BA
+def DPERROR(err_code):
+    return (ctypes.c_int(err_code).value | (_DP_FACILITY << 16))
+
+DPFPDD_E_NOT_IMPLEMENTED = DPERROR(0x0a)
+DPFPDD_E_FAILURE = DPERROR(0x0b)
+DPFPDD_E_NO_DATA = DPERROR(0x0c)
+DPFPDD_E_MORE_DATA = DPERROR(0x0d)
+DPFPDD_E_INVALID_PARAMETER = DPERROR(0x14)
+DPFPDD_E_INVALID_DEVICE = DPERROR(0x15)
+DPFPDD_E_DEVICE_BUSY = DPERROR(0x1e)
+DPFPDD_E_DEVICE_FAILURE = DPERROR(0x1f)
+DPFPDD_E_PAD_LIBRARY = DPERROR(0x21)
+DPFPDD_E_PAD_DATA = DPERROR(0x22)
+DPFPDD_E_PAD_LICENSE = DPERROR(0x23)
+DPFPDD_E_PAD_FAILURE = DPERROR(0x24)
 
 try:
     from PIL import Image
@@ -40,7 +63,37 @@ def log_error_with_traceback(e: Exception, prefix: str = "Error"):
 # numpy is still needed for array manipulation
 import numpy as np
 
+# Define ctypes classes for both Windows and non-Windows environments
+# Common types
+DPFPDD_STATUS = ctypes.c_int
+DPFPDD_DEV = ctypes.c_void_p
+
 # Mock objects for non-Windows platforms
+class MockFunction:
+    """Mock function that can have attributes set on it like argtypes and restype"""
+    def __init__(self, name, return_value=0):
+        self.name = name
+        self.return_value = return_value
+        self.argtypes = []
+        self.restype = None
+        
+    def __call__(self, *args, **kwargs):
+        logger.info(f"Mock: {self.name} called")
+        return self.return_value
+
+class MockDPFPDD:
+    """Mock implementation of the fingerprint scanner SDK for non-Windows platforms"""
+    
+    def __init__(self):
+        # Create mock functions with attributes
+        self.dpfpdd_init = MockFunction("dpfpdd_init", DPFPDD_SUCCESS)
+        self.dpfpdd_exit = MockFunction("dpfpdd_exit", DPFPDD_SUCCESS)
+        self.dpfpdd_query_devices = MockFunction("dpfpdd_query_devices", DPFPDD_SUCCESS)
+        self.dpfpdd_open = MockFunction("dpfpdd_open", DPFPDD_SUCCESS)
+        self.dpfpdd_close = MockFunction("dpfpdd_close", DPFPDD_SUCCESS)
+        self.dpfpdd_get_device_capabilities = MockFunction("dpfpdd_get_device_capabilities", DPFPDD_SUCCESS)
+        self.dpfpdd_capture = MockFunction("dpfpdd_capture", DPFPDD_SUCCESS)
+        self.dpfpdd_cancel = MockFunction("dpfpdd_cancel", DPFPDD_SUCCESS)
 class MockDPFPDD:
     """Mock DPFPDD for non-Windows platforms"""
     def __getattr__(self, name):
@@ -119,33 +172,7 @@ else:
     logger.warning("Non-Windows platform detected. Using mock fingerprint scanner.")
     dpfpdd = MockDPFPDD()
 
-# Define common types
-DPFPDD_STATUS = ctypes.c_int
-DPFPDD_DEV = ctypes.c_void_p
-
-_DP_FACILITY = 0x05BA
-def DPERROR(err_code):
-    return (ctypes.c_int(err_code).value | (_DP_FACILITY << 16))
-
-DPFPDD_SUCCESS = 0
-DPFPDD_E_NOT_IMPLEMENTED = DPERROR(0x0a)
-DPFPDD_E_FAILURE = DPERROR(0x0b)
-DPFPDD_E_NO_DATA = DPERROR(0x0c)
-DPFPDD_E_MORE_DATA = DPERROR(0x0d)
-DPFPDD_E_INVALID_PARAMETER = DPERROR(0x14)
-DPFPDD_E_INVALID_DEVICE = DPERROR(0x15)
-DPFPDD_E_DEVICE_BUSY = DPERROR(0x1e)
-DPFPDD_E_DEVICE_FAILURE = DPERROR(0x1f)
-DPFPDD_E_PAD_LIBRARY = DPERROR(0x21)
-DPFPDD_E_PAD_DATA = DPERROR(0x22)
-DPFPDD_E_PAD_LICENSE = DPERROR(0x23)
-DPFPDD_E_PAD_FAILURE = DPERROR(0x24)
-
-
-DPFPDD_IMG_FMT_PIXEL_BUFFER = 0
-DPFPDD_IMG_PROC_DEFAULT = 0
-
-DPFPDD_TIMEOUT_INFINITE = 0xFFFFFFFF
+# All common constants are defined at the top of the file
 
 # --- SDK Structures ---
 
