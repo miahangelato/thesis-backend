@@ -4,6 +4,7 @@ from .fingerprint_classifier_utils import classify_fingerprint_pattern
 from .bloodgroup_classifier import classify_blood_group_from_multiple
 from .models import Participant, Fingerprint, Result
 from .diabetes_predictor import DiabetesPredictor
+from .risk_thresholds import get_risk_category, get_risk_description
 import base64
 import os
 from typing import Dict, Any
@@ -387,7 +388,10 @@ def predict_diabetes(request, participant_id: int = Form(...), consent: bool = F
                 "success": True,
                 "participant_id": participant_id,
                 "diabetes_risk": prediction_result['risk'],
+                "risk_level": prediction_result.get('risk_level', 'UNKNOWN'),
+                "risk_description": prediction_result.get('risk_description', ''),
                 "confidence": prediction_result['confidence'],
+                "probability": prediction_result.get('probability', prediction_result['confidence']),
                 "result_id": result.id,
                 "features_used": prediction_result.get('features_used', []),
                 "prediction_details": {
@@ -406,7 +410,10 @@ def predict_diabetes(request, participant_id: int = Form(...), consent: bool = F
                 "success": True,
                 "participant_id": participant_id,
                 "diabetes_risk": prediction_result['risk'],
+                "risk_level": prediction_result.get('risk_level', 'UNKNOWN'),
+                "risk_description": prediction_result.get('risk_description', ''),
                 "confidence": prediction_result['confidence'],
+                "probability": prediction_result.get('probability', prediction_result['confidence']),
                 "features_used": prediction_result.get('features_used', []),
                 "prediction_details": {
                     "age": participant.age,
@@ -509,21 +516,45 @@ def predict_diabetes_from_json(request):
         
         # Make prediction
         predictor = DiabetesPredictor()
+        
+        # Load models if needed
+        if not predictor.models or 'A' not in predictor.models:
+            predictor.load_models()
+            
         df = predictor.prepare_input_df(prediction_data, model_key='A')
         model = predictor.models.get('A')
         
         if model is None:
             return {"success": False, "error": "Model not loaded"}
         
+        # Get raw prediction
         pred = model.predict(df)[0]
-        risk = 'DIABETIC' if str(pred).lower() in ['diabetic', '1', 'at risk', 'risk', 'positive'] else 'HEALTHY'
         
-        print(f"[DEBUG] JSON prediction result: {risk}")
+        # Get probability scores if available
+        if hasattr(model, 'predict_proba'):
+            prob_scores = model.predict_proba(df)[0]
+            # Assuming second column is probability of positive class
+            positive_prob = prob_scores[1] if len(prob_scores) > 1 else prob_scores[0]
+        else:
+            # If no probabilities available, use binary prediction
+            positive_prob = 1.0 if str(pred).lower() in ['diabetic', '1', 'at risk', 'risk', 'positive'] else 0.0
+        
+        # Get risk category based on probability
+        risk_level = get_risk_category(positive_prob)
+        risk_description = get_risk_description(risk_level)
+        
+        # Set binary classification
+        risk = 'DIABETIC' if positive_prob >= 0.6 else 'HEALTHY'  # Using HIGH threshold (0.6) for binary classification
+        
+        print(f"[DEBUG] JSON prediction result: {risk}, level: {risk_level}, probability: {positive_prob}")
         
         return {
             "success": True,
             "diabetes_risk": risk,
-            "confidence": 1.0,
+            "risk_level": risk_level,
+            "risk_description": risk_description,
+            "confidence": round(positive_prob, 4),
+            "probability": round(positive_prob, 4),
             "model_used": "A",
             "prediction_details": {
                 "age": prediction_data["age"],
