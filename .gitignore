@@ -27,3 +27,5 @@ __pycache__/
 tests/
 docs/
 notebooks/
+.env.secure
+.env
