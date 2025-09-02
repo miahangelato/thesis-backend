@@ -1,1 +1,1 @@
-web: gunicorn backend.wsgi
+web: bash entrypoint.sh
