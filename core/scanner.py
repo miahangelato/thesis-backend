@@ -436,12 +436,9 @@ def capture_fingerprint_image(device_name=None):
         if device_name is None:
             devices = list_devices()
             if not devices:
-                print("No DigitalPersona fingerprint devices found.")
                 return None, None, None
             
-            print("Found devices:")
             for i, d in enumerate(devices):
-                print(f"  {i+1}. Name: '{d['name']}', Product: '{d['product_name']}', Serial: '{d['serial_num']}'")
 
             # Select U.are.U device
             uareu_device = next(
@@ -450,17 +447,14 @@ def capture_fingerprint_image(device_name=None):
             )
             
             if not uareu_device:
-                print("No U.are.U device found!")
                 return None, None, None
 
             device_name = uareu_device["name"]
-            print(f"Using U.are.U device: '{device_name}'")
 
         status = dpfpdd.dpfpdd_open(device_name.encode('utf-8'), ctypes.byref(dev))
         if not check_status(status, "dpfpdd_open"):
             return None, None, None
 
-        print("Device opened. Place your finger on the scanner...")
 
         dev_caps_obj = None
 
@@ -471,7 +465,6 @@ def capture_fingerprint_image(device_name=None):
 
         if status == DPFPDD_E_MORE_DATA:
             required_caps_size = dev_caps_min.size
-            print(f"Device capabilities struct too small. Re-allocating for {required_caps_size} bytes.")
 
             base_caps_size = ctypes.sizeof(DPFPDD_DEV_CAPS_MIN) - ctypes.sizeof(ctypes.c_uint)
             num_additional_resolutions = (required_caps_size - base_caps_size) // ctypes.sizeof(ctypes.c_uint)
@@ -501,16 +494,13 @@ def capture_fingerprint_image(device_name=None):
             dev_caps_obj = dev_caps_min
         
         if not check_status(status, "dpfpdd_get_device_capabilities"):
-            print("Failed to get device capabilities. Cannot determine supported resolutions.")
             return None, None, None
 
         preferred_resolution = 0
         if dev_caps_obj and dev_caps_obj.resolution_cnt > 0:
             preferred_resolution = dev_caps_obj.resolutions[0]
-            print(f"Device supports {dev_caps_obj.resolution_cnt} resolutions. Using: {preferred_resolution} DPI.")
         else:
             print("Warning: Device reported no supported resolutions or capabilities not retrieved. Using default (0).")
-
 
         capture_parm = DPFPDD_CAPTURE_PARAM()
         capture_parm.size = ctypes.sizeof(DPFPDD_CAPTURE_PARAM)
@@ -545,7 +535,6 @@ def capture_fingerprint_image(device_name=None):
                 break
             elif status == DPFPDD_E_MORE_DATA:
                 required_size = actual_image_size.value
-                print(f"Image buffer too small. Re-allocating for {required_size} bytes.")
                 image_buffer = ctypes.create_string_buffer(required_size)
                 image_buffer_ptr = ctypes.cast(image_buffer, ctypes.POINTER(ctypes.c_ubyte))
                 actual_image_size.value = required_size
@@ -554,11 +543,8 @@ def capture_fingerprint_image(device_name=None):
                 return None, None, None
 
         if capture_result.success == 0:
-            print(f"Capture operation reported failure by SDK. Quality flags: {hex(capture_result.quality)}")
             return None, None, None
 
-        print(f"Fingerprint captured! Score: {capture_result.score}, Quality Flags: {hex(capture_result.quality)}")
-        print(f"Image Info: Width={capture_result.info.width}, Height={capture_result.info.height}, Res={capture_result.info.res}, BPP={capture_result.info.bpp}")
         
         # *** Crucial Change Here: Only take the expected pixel data size ***
         # The SDK returns `actual_image_size.value` as the size of the buffer used/required.
@@ -892,17 +878,13 @@ class FingerprintScanner:
 # Test function
 def test_scanner():
     try:
-        print("\nTesting fingerprint scanner...")
         
         if not IS_WINDOWS:
-            print("Non-Windows platform detected. Using mock fingerprint scanner.")
             scanner = FingerprintScanner()
             image_bytes = scanner.capture_fingerprint()
             if image_bytes:
-                print(f"Mock fingerprint created: {len(image_bytes)} bytes")
                 with open("mock_fingerprint.png", "wb") as f:
                     f.write(image_bytes)
-                print("Mock image saved as mock_fingerprint.png")
             return
             
         devices = list_devices()
@@ -914,21 +896,17 @@ def test_scanner():
         )
         
         if not uareu_device:
-            print("Error: U.are.U scanner not found!")
             return
             
-        print(f"Found U.are.U device: {uareu_device['product_name']}")
         
         # Capture using specific device
         image_bytes, img_info, quality = capture_fingerprint_image(uareu_device["name"])
         
         if image_bytes:
-            print(f"Captured {len(image_bytes)} bytes of pixel data.")
             if img_info:
                 png_filename = f"fingerprint_{img_info['width']}x{img_info['height']}.png"
                 with open(png_filename, "wb") as f:
                     f.write(image_bytes)
-                print(f"Image saved as {png_filename}")
         else:
             print("Capture failed!")
             

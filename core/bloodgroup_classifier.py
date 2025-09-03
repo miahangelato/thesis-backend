@@ -28,25 +28,49 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Check if we're in production environment
+IS_PRODUCTION = os.environ.get('RAILWAY_DEPLOYMENT') == 'True'
+
+# S3 key for the model in production
+S3_MODEL_KEY = 'models/bloodgroup_model_20250823-140933.h5'
+
 class BloodGroupClassifier:
     def __init__(self):
         self.model = None
-        self.model_path = os.path.join(os.path.dirname(__file__), 'bloodgroup_model_20250823-140933.h5')
-        self.load_model()
+        self.local_model_path = os.path.join(os.path.dirname(__file__), 'bloodgroup_model_20250823-140933.h5')
         
         # Blood group classes based on the Kaggle dataset
         self.blood_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+        
+        # We'll lazy load the model when needed
     
     def load_model(self):
         """Load the blood group classification model"""
         if not TENSORFLOW_AVAILABLE:
             logger.warning("TensorFlow not available - blood group classification disabled")
             return
+        
+        # If model is already loaded, return
+        if self.model is not None:
+            return
             
+        # Try loading from S3 in production
+        if IS_PRODUCTION:
+            try:
+                from .s3_model_loader import load_model_from_s3
+                logger.info(f"Loading blood group model from S3: {S3_MODEL_KEY}")
+                self.model = load_model_from_s3(S3_MODEL_KEY)
+                logger.info("Blood group model loaded from S3")
+                return
+            except Exception as e:
+                logger.error(f"Failed to load blood group model from S3: {e}")
+                # Fall back to local file
+        
+        # Try loading from local file system
         try:
-            if os.path.exists(self.model_path):
-                self.model = load_model(self.model_path)
-                logger.info(f"Blood group model loaded successfully from {self.model_path}")
+            if os.path.exists(self.local_model_path):
+                self.model = load_model(self.local_model_path)
+                logger.info(f"Blood group model loaded successfully from {self.local_model_path}")
             else:
                 logger.error(f"Model file not found at {self.model_path}")
                 logger.info("Blood group classification will not be available")
